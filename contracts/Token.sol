@@ -5,6 +5,8 @@ import "./ERC1155Hybrid.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+import "hardhat/console.sol";
+
 struct TokenConfig {
     bool added;
     bool canMint;
@@ -13,11 +15,20 @@ struct TokenConfig {
 }
 
 contract Token is ERC1155Hybrid, Pausable, Ownable {
+    uint8 public constant ROLE_MINT_FT = 1 << 0;
+    uint8 public constant ROLE_MINT_NFT = 1 << 1;
+    uint8 public constant ROLE_BATCH_MINT_NFT = 1 << 2;
+    uint8 public constant ROLE_BURN_FT = 1 << 3;
+
     uint256 private constant TIER_0_START = 0;
     uint256 private constant TIER_1_START = 2**16;
     uint256 private constant TIER_2_START = 2**56;
     uint256 private constant TIER_3_START = 2**96;
     uint256 private constant TIER_UPPER_BOUND = 2**136;
+
+    mapping(address => uint8) _roles;
+
+    error NotAuthorized(uint8 req, address sender);
 
     address _mintContract;
     address _burnContract;
@@ -26,19 +37,10 @@ contract Token is ERC1155Hybrid, Pausable, Ownable {
     mapping(uint256 => TokenConfig) private _added;
     mapping(uint8 => uint256) private _nextID;
 
-    modifier onlyBurner() {
-        require(
-            msg.sender == _burnContract,
-            "Only burning contract can burn tokens."
-        );
-        _;
-    }
-
-    modifier onlyMinter() {
-        require(
-            msg.sender == _mintContract,
-            "Only mint contract can mint tokens."
-        );
+    modifier requireRole(uint8 req) {
+        if (!hasRole(_msgSender(), req)) {
+            revert NotAuthorized(req, _msgSender());
+        }
         _;
     }
 
@@ -52,6 +54,11 @@ contract Token is ERC1155Hybrid, Pausable, Ownable {
         _nextID[1] = TIER_1_START;
         _nextID[2] = TIER_2_START;
         _nextID[3] = TIER_3_START;
+
+        // console.log(ROLE_MINT_FT);
+        // console.log(ROLE_MINT_NFT);
+        // console.log(ROLE_BATCH_MINT_NFT);
+        // console.log(ROLE_BURN_FT);
     }
 
     function setMetadata(
@@ -74,20 +81,12 @@ contract Token is ERC1155Hybrid, Pausable, Ownable {
         _unpause();
     }
 
-    function setMintContract(address addr) public onlyOwner {
-        _mintContract = addr;
+    function setRole(address operator, uint8 mask) public onlyOwner {
+        _roles[operator] = mask;
     }
 
-    function mintContract() public view returns (address) {
-        return _mintContract;
-    }
-
-    function setBurnContract(address addr) public onlyOwner {
-        _burnContract = addr;
-    }
-
-    function burnContract() public view returns (address) {
-        return _burnContract;
+    function hasRole(address operator, uint8 role) public view returns (bool) {
+        return _roles[operator] & role == role;
     }
 
     function _tierOf(uint256 id) internal pure override returns (uint8) {
@@ -179,7 +178,7 @@ contract Token is ERC1155Hybrid, Pausable, Ownable {
         address to,
         uint256 tokenID,
         uint256 quantity
-    ) public onlyMinter {
+    ) public requireRole(ROLE_MINT_FT) {
         require(_isFungible(tokenID), "Token is not fungible.");
         require(_added[tokenID].added, "Token type not added.");
         require(_added[tokenID].canMint, "Token cannot be minted.");
@@ -214,7 +213,7 @@ contract Token is ERC1155Hybrid, Pausable, Ownable {
         address to,
         uint8 tier,
         uint256 quantity
-    ) public onlyBurner {
+    ) public requireRole(ROLE_MINT_NFT) {
         require(!_isFungibleTier(tier), "Tier is fungible.");
         _mintNFT(to, tier, quantity);
     }
@@ -232,7 +231,7 @@ contract Token is ERC1155Hybrid, Pausable, Ownable {
         address to,
         uint8[] calldata tiers,
         uint256[] calldata quantities
-    ) public onlyBurner {
+    ) public requireRole(ROLE_BATCH_MINT_NFT) {
         require(tiers.length == quantities.length, "Array mismatch");
 
         for (uint256 i = 0; i < tiers.length; i++) {
@@ -244,7 +243,7 @@ contract Token is ERC1155Hybrid, Pausable, Ownable {
         address owner,
         uint256 tokenID,
         uint256 quantity
-    ) public onlyBurner {
+    ) public requireRole(ROLE_BURN_FT) {
         require(_isFungible(tokenID), "Token is not fungible.");
         require(_added[tokenID].added, "Token type not added.");
         require(_added[tokenID].canBurn, "Token cannot be burned.");

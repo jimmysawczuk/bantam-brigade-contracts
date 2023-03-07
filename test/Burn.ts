@@ -2,6 +2,7 @@ import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { bn } from "../lib/utils";
+import { Token__factory } from "../typechain-types";
 
 describe("Burn", function () {
 	async function deploy() {
@@ -22,10 +23,11 @@ describe("Burn", function () {
 		const Burn = await ethers.getContractFactory("Burn");
 		const burn = await Burn.deploy();
 
+		await token.setRole(mint.address, parseInt("0001", 2));
+		await token.setRole(burn.address, parseInt("1010", 2));
+
 		await mint.setTokenAddress(token.address);
 		await burn.setTokenAddress(token.address);
-		await token.setMintContract(mint.address);
-		await token.setBurnContract(burn.address);
 
 		await token.addFT(0, 100, true, true);
 		await token.addFT(0, 1000, true, true);

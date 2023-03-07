@@ -16,7 +16,14 @@ async function deploy() {
 		"https://meta.bantambrigade.com/{id}.json"
 	);
 
-	return { token, owner, accounts, provider };
+	const roles = [
+		await token.ROLE_MINT_FT(),
+		await token.ROLE_MINT_NFT(),
+		await token.ROLE_BATCH_MINT_NFT(),
+		await token.ROLE_BURN_FT(),
+	];
+
+	return { token, owner, accounts, roles, provider };
 }
 
 describe("Token", function () {
@@ -253,5 +260,74 @@ describe("Metadata", async () => {
 		expect(await token.uri(0)).to.equal(
 			"https://www.google.com/metadata/{id}"
 		);
+	});
+});
+
+describe("Roles", async () => {
+	it("addresses should initially have no roles", async () => {
+		const { token, accounts, roles } = await loadFixture(deploy);
+
+		for (const role of roles) {
+			expect(await token.hasRole(accounts[1].address, role)).to.be.false;
+		}
+	});
+
+	it("address should receive one role", async () => {
+		const { token, accounts, roles } = await loadFixture(deploy);
+
+		await expect(token.setRole(accounts[1].address, 1)).to.not.be.reverted;
+
+		for (const role of roles) {
+			expect(await token.hasRole(accounts[1].address, role)).to.equal(
+				role == 1 ? true : false
+			);
+		}
+	});
+
+	it("address should receive two roles", async () => {
+		const { token, accounts, roles } = await loadFixture(deploy);
+
+		await expect(token.setRole(accounts[1].address, 1 + 2)).to.not.be
+			.reverted;
+
+		for (const role of roles) {
+			expect(await token.hasRole(accounts[1].address, role)).to.equal(
+				role == 1 || role == 2 ? true : false
+			);
+		}
+	});
+
+	it("address should receive all roles", async () => {
+		const { token, accounts, roles } = await loadFixture(deploy);
+
+		await expect(token.setRole(accounts[1].address, 1 + 2 + 4 + 8)).to.not
+			.be.reverted;
+
+		for (const role of roles) {
+			expect(await token.hasRole(accounts[1].address, role)).to.equal(
+				true
+			);
+		}
+	});
+
+	it("address should have all roles revoked", async () => {
+		const { token, accounts, roles } = await loadFixture(deploy);
+
+		await expect(token.setRole(accounts[1].address, 1 + 2 + 4 + 8)).to.not
+			.be.reverted;
+
+		for (const role of roles) {
+			expect(await token.hasRole(accounts[1].address, role)).to.equal(
+				true
+			);
+		}
+
+		await expect(token.setRole(accounts[1].address, 0)).to.not.be.reverted;
+
+		for (const role of roles) {
+			expect(await token.hasRole(accounts[1].address, role)).to.equal(
+				false
+			);
+		}
 	});
 });

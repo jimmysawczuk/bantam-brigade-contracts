@@ -20,8 +20,9 @@ describe("Mint", function () {
 		const Mint = await ethers.getContractFactory("Mint");
 		const mint = await Mint.deploy();
 
+		await token.setRole(mint.address, parseInt("0001", 2));
+
 		await mint.setTokenAddress(token.address);
-		await token.setMintContract(mint.address);
 
 		return { token, mint, owner, accounts };
 	}

@@ -20,7 +20,8 @@ describe("Benchmark - breakCrate", function () {
 		const Burn = await ethers.getContractFactory("Burn");
 		const burn = await Burn.deploy();
 
-		await token.setBurnContract(burn.address);
+		await token.setRole(burn.address, parseInt("1010", 2));
+
 		await burn.setTokenAddress(token.address);
 
 		await token.addFT(0, 100, true, true);
