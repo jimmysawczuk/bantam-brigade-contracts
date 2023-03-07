@@ -13,7 +13,7 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 
 struct Owner {
     address owner;
-    uint256 start;
+    bool burned;
     uint256 amount;
 }
 
@@ -76,7 +76,9 @@ abstract contract ERC1155Hybrid is
 
         uint8 tier = _tierOf(id);
 
-        return _nftOwnership[tier][_findNearestOwnershipRecord(tier, id)].owner;
+        (, uint256 idx, ) = _findNearestOwnershipRecord(tier, id);
+
+        return _nftOwnership[tier][idx].owner;
     }
 
     function balanceOfTier(address account, uint8 tier)
@@ -212,18 +214,20 @@ abstract contract ERC1155Hybrid is
         require(amount == 1, "ERC1155: transfer of NFT must have amount of 1");
 
         uint8 tier = _tierOf(id);
-        Owner storage left = _nftOwnership[tier][
-            _findNearestOwnershipRecord(tier, id)
-        ];
+        (
+            address origOwner,
+            uint256 origStart,
+            uint256 origAmount
+        ) = _findNearestOwnershipRecord(tier, id);
 
-        require(left.owner == from, "ERC1155: not the owner of this token");
+        require(origOwner == from, "ERC1155: not the owner of this token");
         require(
             from == operator || _operatorApprovals[from][operator],
             "ERC1155: not approved"
         );
 
-        uint256 rightAmount = left.start + left.amount - id - 1;
-        uint256 leftAmount = id - left.start;
+        uint256 rightAmount = origStart + origAmount - id - 1;
+        uint256 leftAmount = id - origStart;
 
         // console.log("ownership array length", _nftOwnership[tier].length);
         // console.log("left", left.start, left.amount);
@@ -231,15 +235,15 @@ abstract contract ERC1155Hybrid is
         // console.log("right", right.start, right.amount);
 
         if (leftAmount > 0) {
-            _nftOwnership[tier][left.start].amount = leftAmount;
+            _nftOwnership[tier][origStart].amount = leftAmount;
         }
 
-        _nftOwnership[tier][id] = Owner({owner: to, start: id, amount: 1});
+        _nftOwnership[tier][id] = Owner({owner: to, burned: false, amount: 1});
 
         if (rightAmount > 0) {
             _nftOwnership[tier][id + 1] = Owner({
                 owner: from,
-                start: id + 1,
+                burned: false,
                 amount: rightAmount
             });
         }
@@ -269,15 +273,26 @@ abstract contract ERC1155Hybrid is
     function _findNearestOwnershipRecord(uint8 tier, uint256 id)
         private
         view
-        returns (uint256)
+        returns (
+            address,
+            uint256,
+            uint256
+        )
     {
         if (id > _nftMintCounter[tier]) {
             revert("Token not minted");
         }
 
         for (uint256 i = id; i >= 0; i--) {
-            if (_nftOwnership[tier][i].start == i) {
-                return _nftOwnership[tier][i].start;
+            if (
+                _nftOwnership[tier][i].owner != address(0) ||
+                _nftOwnership[tier][i].burned
+            ) {
+                return (
+                    _nftOwnership[tier][i].owner,
+                    i,
+                    _nftOwnership[tier][i].amount
+                );
             }
         }
 
@@ -395,7 +410,7 @@ abstract contract ERC1155Hybrid is
 
         _nftOwnership[tier][start] = Owner({
             owner: to,
-            start: start,
+            burned: false,
             amount: amount
         });
         _nftBalances[tier][to] += amount;
